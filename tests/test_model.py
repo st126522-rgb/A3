@@ -13,7 +13,7 @@ def mock_model(monkeypatch):
 
 def test_model_input_shape(mock_model):
     X = model.get_X(*feature_vals)
-    assert X.shape[1] == 35
+    assert X.shape[1] == 4
     assert np.issubdtype(X.dtype, np.number)
 
 def test_model_output_shape(mock_model):

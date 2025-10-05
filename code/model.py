@@ -6,6 +6,10 @@ import logging
 import mlflow
 import mlflow.pyfunc
 from dotenv import load_dotenv
+import os
+
+BASE_DIR = os.path.dirname(__file__)  # directory where model.py resides
+SCALER_PATH = os.path.join(BASE_DIR, "scaler_a3.pkl")
 
 logging.basicConfig(level=logging.INFO)
 load_dotenv()
