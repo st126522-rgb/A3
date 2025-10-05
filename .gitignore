@@ -1,0 +1,21 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Environment variables
+.env
+
+# Jupyter notebooks checkpoints
+.ipynb_checkpoints/
+
+# MLflow local runs/artifacts
+mlruns/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Python virtual environments
+venv/
+env/
+*.egg-info/
