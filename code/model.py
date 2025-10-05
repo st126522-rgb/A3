@@ -17,7 +17,7 @@ load_dotenv()
 
 # Load scaler
 
-with open("scaler_a3.pkl", "rb") as f:
+with open(SCALER_PATH, "rb") as f:
     scaler = pickle.load(f)
 
 
