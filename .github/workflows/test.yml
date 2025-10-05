@@ -76,7 +76,7 @@ jobs:
           proxy_key: ${{ secrets.SSH_PRIVATE_KEY }}
 
           script: |
-            cd st125985
+            cd st126522
 
             # 1️⃣ Create .env file dynamically with MLflow credentials
             echo "MLFLOW_TRACKING_URI=${{ secrets.MLFLOW_TRACKING_URI }}" > .env
