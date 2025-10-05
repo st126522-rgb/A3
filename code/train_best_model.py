@@ -1,15 +1,13 @@
+from dotenv import load_dotenv, set_key
 import os
-import time 
+import time
 import numpy as np
-import pandas as pd
-from mlflow import pyfunc
+import mlflow
 import mlflow.sklearn
-from code.MultiLogisticRegression import MultinomialLogisticRegression, classification_report_custom
-from dotenv import load_dotenv
-from mlflow.models.signature import infer_signature
-
+from MultiLogisticRegression import MultinomialLogisticRegression, classification_report_custom
 
 def train_and_register_best_model(X_train, Y_train, X_test, Y_test):
+    # Load environment variables
     load_dotenv()
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI"))
 
@@ -21,23 +19,28 @@ def train_and_register_best_model(X_train, Y_train, X_test, Y_test):
 
     mlflow.set_experiment("st126522-a3")
 
-    learning_rates = [0.01]
-    ridge_values = [0.0, 1.0]
-    methods = ["minibatch", "sto"]
+    # learning_rates = [0.01, 0.05, 0.1]
+    learning_rates = [0.01, 0.05]
+    # ridge_values = [0.0, 0.5, 1.0]
+    ridge_values = [0.0, 0.5]
+    # methods = ["minibatch", "sto", "batch"]
+    methods = ["minibatch", "batch"]
     max_iter = 4000
 
     best_macro_f1 = -np.inf
     best_model = None
-    best_run_name = None
-    all_results = []
+    best_run_id = None
 
+    # Train all combinations
     for lr in learning_rates:
         for ridge in ridge_values:
             for method in methods:
                 run_name = f"{int(time.time())}_method_{method}_ridge_{ridge}_lr_{lr}"
                 print(f"\n=== Run: {run_name} ===")
 
-                with mlflow.start_run(run_name=run_name):
+                with mlflow.start_run(run_name=run_name) as run:
+                    run_id = run.info.run_id
+
                     model = MultinomialLogisticRegression(
                         n_classes=Y_train.shape[1],
                         n_features=X_train.shape[1],
@@ -52,8 +55,9 @@ def train_and_register_best_model(X_train, Y_train, X_test, Y_test):
 
                     y_pred = model.predict(X_test)
                     acc = np.mean(Y_test == y_pred)
-                    per_class, macro, weighted = classification_report_custom(Y_test, y_pred)
+                    _, macro, weighted = classification_report_custom(Y_test, y_pred)
 
+                    # Log parameters and metrics
                     mlflow.log_params({
                         "method": method,
                         "learning_rate": lr,
@@ -66,56 +70,33 @@ def train_and_register_best_model(X_train, Y_train, X_test, Y_test):
                         "weighted_f1": weighted['f1']
                     })
 
-                    all_results.append({
-                        "run_name": run_name,
-                        "method": method,
-                        "lr": lr,
-                        "ridge": ridge,
-                        "accuracy": acc,
-                        "macro_f1": macro['f1'],
-                        "weighted_f1": weighted['f1'],
-                    })
+                    # Log model as artifact
+                    mlflow.sklearn.log_model(model, artifact_path="model")
 
-                if macro['f1'] > best_macro_f1:
-                    best_macro_f1 = macro['f1']
-                    best_model = model
-                    best_run_name = run_name
+                    # Track best model
+                    if macro['f1'] > best_macro_f1:
+                        best_macro_f1 = macro['f1']
+                        best_model = model
+                        best_run_id = run_id
 
-    print("\n Best model:", best_run_name, "Macro F1:", best_macro_f1)
+    print("\nBest Macro F1:", best_macro_f1, "from run_id:", best_run_id)
 
-    best_result = next(r for r in all_results if r['run_name'] == best_run_name)
+    # Ensure last run is closed
+    mlflow.end_run()
+
+    # Register the best model (requires registry-enabled MLflow)
     registered_model_name = "st126522-a3-model"
+    model_uri = f"runs:/{best_run_id}/model"
+    try:
+        registered_model = mlflow.register_model(model_uri, registered_model_name)
+        print(f"Model registered as '{registered_model_name}'")
+    except Exception as e:
+        print("Model registration failed. Are you using a registry-enabled MLflow? Error:", e)
 
-    with mlflow.start_run(run_name=f"best_model_{best_run_name}"):
-        mlflow.log_params({
-            "description": "Best model from grid search based on macro F1",
-            "method": best_model.method,
-            "lr": best_model.lr,
-            "l2_lambda": best_model.l2
-        })
-        mlflow.log_metrics({
-            "accuracy": best_result['accuracy'],
-            "macro_f1": best_result['macro_f1'],
-            "weighted_f1": best_result['weighted_f1']
-        })
+    # Update .env with best run_id
+    env_path = ".env"
+    if not os.path.exists(env_path):
+        open(env_path, "a").close()
+    set_key(env_path, "RUN_ID", best_run_id)
 
-        signature = infer_signature(X_train, best_model.predict(X_train))
-        mlflow.sklearn.log_model(
-            sk_model=best_model,
-            artifact_path="model",
-            input_example=X_train[:5],
-            signature=signature,
-            registered_model_name=registered_model_name,
-        )
-
-        client = mlflow.tracking.MlflowClient()
-        latest_version = client.get_latest_versions(registered_model_name, stages=["None"])[-1].version
-        client.transition_model_version_stage(
-            name=registered_model_name,
-            version=latest_version,
-            stage="Production",
-            archive_existing_versions=True,
-        )
-
-    print(f"\n Best model promoted to Production: {best_run_name}")
-    return registered_model_name
+    return best_model, best_run_id
